@@ -1,0 +1,86 @@
+version: "3.9"
+
+services:
+  app1:
+    build:
+      context: ./app
+    container_name: go-app-1
+    environment:
+      - APP_PORT=8080
+      - APP_READ_TIMEOUT=5s
+      - APP_WRITE_TIMEOUT=10s
+      - APP_IDLE_TIMEOUT=60s
+      - ERROR_PERCENTAGE=0.1
+      - SLOW_DURATION_MAX=3s
+    ports:
+      - "8080:8080"
+    networks:
+      - observability
+    restart: unless-stopped
+
+  app2:
+    build:
+      context: ./app
+    container_name: go-app-2
+    environment:
+      - APP_PORT=8080
+      - APP_READ_TIMEOUT=5s
+      - APP_WRITE_TIMEOUT=10s
+      - APP_IDLE_TIMEOUT=60s
+      - ERROR_PERCENTAGE=0.5
+      - SLOW_DURATION_MAX=100ms
+    ports:
+      - "8081:8080"
+    networks:
+      - observability
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.5.1
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    networks:
+      - observability
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  node-exporter:
+    image: prom/node-exporter:v1.10.2
+    container_name: node-exporter
+    command:
+      - '--path.rootfs=/host'
+      # exclude container mountpoints from filesystem metrics
+      - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($|/)'
+      - '--web.listen-address=0.0.0.0:9100'
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro' # mount host root filesystem read-only
+    security_opt:
+      - 'no-new-privileges:true'
+
+  grafana:
+    image: grafana/grafana:12.3
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    networks:
+      - observability
+    restart: unless-stopped
+
+networks:
+  observability:
+    driver: bridge
+
